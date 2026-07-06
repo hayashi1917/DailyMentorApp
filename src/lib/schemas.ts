@@ -153,15 +153,70 @@ export const feedbackAnalysisSchema = z.object({
 
 export const mentorChatInputSchema = z.object({
   message: z.string().min(1).max(2000),
-  history: z
+});
+
+// ------------------------------------------------------------
+// Mentor chat agent tools (validated before executing)
+// AIの関数呼び出し引数は信用せず、必ずZodで検証してから実行する
+// ------------------------------------------------------------
+export const chatCreateTasksArgsSchema = z.object({
+  tasks: z
     .array(
       z.object({
-        role: z.enum(["user", "assistant"]),
-        content: z.string().max(4000),
+        title: z.string().min(1).max(200),
+        estimated_minutes: z
+          .number()
+          .int()
+          .positive()
+          .max(600)
+          .optional()
+          .catch(undefined),
+        priority: z.enum(["high", "medium", "low"]).catch("medium"),
+        difficulty: z.enum(["high", "medium", "low"]).catch("medium"),
+        deadline: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional()
+          .catch(undefined),
+        description: z.string().max(500).optional().catch(undefined),
+        next_action: z.string().max(200).optional().catch(undefined),
+        recovery_action: z.string().max(200).optional().catch(undefined),
       })
     )
-    .max(20)
-    .default([]),
+    .min(1)
+    .max(10),
+});
+
+export const chatUpdateTaskArgsSchema = z.object({
+  task_id: z.string().uuid(),
+  title: z.string().min(1).max(200).optional(),
+  estimated_minutes: z.number().int().positive().max(600).optional(),
+  priority: z.enum(["high", "medium", "low"]).optional(),
+  difficulty: z.enum(["high", "medium", "low"]).optional(),
+  deadline: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullish(),
+  status: z.enum(["todo", "done", "archived"]).optional(),
+  next_action: z.string().max(200).nullish(),
+  recovery_action: z.string().max(200).nullish(),
+});
+
+export const chatGeneratePlanArgsSchema = z.object({
+  instructions: z.string().max(2000).optional().catch(undefined),
+});
+
+export const chatSaveMemoryArgsSchema = z.object({
+  memory_type: z.enum([
+    "rhythm",
+    "preference",
+    "failure_pattern",
+    "success_pattern",
+    "task_style",
+    "mentor_tone",
+    "recovery_strategy",
+  ]),
+  content: z.string().min(1).max(200),
 });
 
 // ------------------------------------------------------------

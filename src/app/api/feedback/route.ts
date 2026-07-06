@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { feedbackAnalysisSchema, feedbackInputSchema } from "@/lib/schemas";
 import { embedMemoryRow } from "@/lib/embeddings";
+import { upsertUserMemory } from "@/lib/memories";
 import { getOpenAI, OPENAI_MODEL } from "@/lib/openai";
 
 const TARGET_TYPE_LABELS: Record<string, string> = {
@@ -58,43 +59,15 @@ ${text}
 
   const learned: string[] = [];
   for (const mem of parsed.data.memories) {
-    const { data: existing } = await supabase
-      .from("user_memories")
-      .select("id, confidence, evidence_count")
-      .eq("user_id", userId)
-      .eq("memory_type", mem.memory_type)
-      .eq("content", mem.content)
-      .maybeSingle();
-
-    if (existing) {
-      await supabase
-        .from("user_memories")
-        .update({
-          evidence_count: existing.evidence_count + 1,
-          confidence: Math.min(0.95, Number(existing.confidence) + 0.1),
-          last_observed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existing.id);
-      learned.push(mem.content);
-    } else {
-      const { data: inserted } = await supabase
-        .from("user_memories")
-        .insert({
-          user_id: userId,
-          memory_type: mem.memory_type,
-          content: mem.content,
-          // 本人の言葉由来なのでヒューリスティックより高めの初期確度
-          confidence: 0.7,
-          evidence_count: 1,
-        })
-        .select("id")
-        .single();
-      if (inserted) {
-        await embedMemoryRow(supabase, inserted.id, mem.content);
-        learned.push(mem.content);
-      }
-    }
+    // 本人の言葉由来なのでヒューリスティックより高めの初期確度
+    const ok = await upsertUserMemory(
+      supabase,
+      userId,
+      mem.memory_type,
+      mem.content,
+      0.7
+    );
+    if (ok) learned.push(mem.content);
   }
   return learned;
 }

@@ -1,38 +1,129 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import type { MentorAction } from "@/lib/types";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  actions?: MentorAction[] | null;
+};
+
+const WELCOME: Message = {
+  role: "assistant",
+  content:
+    "こんにちは 🌱 ここで話しながら、タスクの登録や今日の計画づくりまで一緒にできます。「今日の計画を立てて」「◯◯を金曜までにやりたい」など、なんでもどうぞ。",
+};
 
 const SUGGESTIONS = [
-  "今なにから始めればいい？",
+  "今日の計画を一緒に立てて",
+  "やりたいことがあるからタスクにして",
+  "今日の計画をもう少し軽くして",
   "やる気が出ない",
-  "今日の計画が重く感じる",
 ];
 
+function ActionChips({ actions }: { actions: MentorAction[] }) {
+  return (
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
+      {actions.map((a, i) => {
+        if (a.type === "tasks_created") {
+          return (
+            <Link
+              key={i}
+              href="/tasks"
+              className="rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-700"
+            >
+              ✅ タスクを{a.titles.length}件登録 →
+            </Link>
+          );
+        }
+        if (a.type === "task_updated") {
+          return (
+            <span
+              key={i}
+              className="rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-700"
+            >
+              ✏️ 「{a.title}」を更新
+            </span>
+          );
+        }
+        if (a.type === "plan_updated") {
+          return (
+            <Link
+              key={i}
+              href="/today"
+              className="rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-700"
+            >
+              📅 今日の計画を更新 →
+            </Link>
+          );
+        }
+        return (
+          <Link
+            key={i}
+            href="/settings/memory"
+            className="rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700"
+          >
+            🧠 覚えました: {a.content.length > 24 ? `${a.content.slice(0, 24)}…` : a.content}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function MentorPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "こんにちは 🌱 今日の様子はどうですか？迷っていること、しんどいこと、なんでもどうぞ。",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  // 過去の会話をDBから復元する(端末をまたいでも続きから話せる)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/mentor/chat");
+        const json = await res.json();
+        if (!cancelled && res.ok && json.messages?.length) {
+          setMessages([
+            WELCOME,
+            ...json.messages.map(
+              (m: {
+                role: "user" | "assistant";
+                content: string;
+                actions_json: MentorAction[] | null;
+              }) => ({
+                role: m.role,
+                content: m.content,
+                actions: m.actions_json,
+              })
+            ),
+          ]);
+        }
+      } catch {
+        // 履歴が取れなくても新規会話は始められる
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, sending]);
 
   async function send(text: string) {
     const message = text.trim();
     if (!message || sending) return;
 
-    const nextMessages: Message[] = [...messages, { role: "user", content: message }];
-    setMessages(nextMessages);
+    setMessages((prev) => [...prev, { role: "user", content: message }]);
     setInput("");
     setSending(true);
 
@@ -40,10 +131,7 @@ export default function MentorPage() {
       const res = await fetch("/api/mentor/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          history: nextMessages.slice(-11, -1),
-        }),
+        body: JSON.stringify({ message }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -56,7 +144,10 @@ export default function MentorPage() {
         ]);
         return;
       }
-      setMessages((prev) => [...prev, { role: "assistant", content: json.reply }]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: json.reply, actions: json.actions },
+      ]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -78,14 +169,17 @@ export default function MentorPage() {
             key={i}
             className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
           >
-            <div
-              className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                m.role === "user"
-                  ? "rounded-br-md bg-brand-600 text-white"
-                  : "rounded-bl-md bg-gray-100 text-gray-800"
-              }`}
-            >
-              {m.content}
+            <div className="max-w-[85%]">
+              <div
+                className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  m.role === "user"
+                    ? "rounded-br-md bg-brand-600 text-white"
+                    : "rounded-bl-md bg-gray-100 text-gray-800"
+                }`}
+              >
+                {m.content}
+              </div>
+              {m.actions?.length ? <ActionChips actions={m.actions} /> : null}
             </div>
           </div>
         ))}
@@ -96,7 +190,7 @@ export default function MentorPage() {
             </div>
           </div>
         )}
-        {messages.length <= 1 && (
+        {loaded && messages.length <= 1 && (
           <div className="flex flex-wrap gap-2 pt-2">
             {SUGGESTIONS.map((s) => (
               <button
@@ -124,7 +218,7 @@ export default function MentorPage() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="メッセージを入力..."
+            placeholder="計画の相談・タスク追加・雑談なんでも..."
             className="min-w-0 flex-1 rounded-full border border-gray-300 bg-white px-4 py-2.5 text-base outline-none focus:border-brand-500"
           />
           <button

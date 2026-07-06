@@ -35,17 +35,13 @@ export default function GeneratePlanButton({
       <button
         onClick={generate}
         disabled={loading}
-        className={`w-full rounded-2xl py-4 text-base font-semibold active:opacity-90 disabled:opacity-50 ${
-          hasPlan
-            ? "border border-brand-600 bg-white text-brand-600"
-            : "bg-brand-600 text-white"
-        }`}
+        className="w-full rounded-2xl border border-brand-600 bg-white py-4 text-base font-semibold text-brand-600 active:opacity-90 disabled:opacity-50"
       >
         {loading
           ? "メンターが計画を考えています..."
           : hasPlan
-            ? "計画を作り直す"
-            : "今日の計画を生成する"}
+            ? "⚡ 会話せずに作り直す"
+            : "⚡ 会話せずにすぐ生成する"}
       </button>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
     </div>

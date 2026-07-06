@@ -304,6 +304,12 @@ export default async function TodayPage() {
 
       {/* CTA */}
       <div className="mt-6 space-y-3">
+        <Link
+          href="/mentor"
+          className="block w-full rounded-2xl bg-brand-600 py-4 text-center text-base font-semibold text-white active:bg-brand-700"
+        >
+          💬 {plan ? "メンターと計画を調整する" : "メンターと計画を立てる"}
+        </Link>
         <GeneratePlanButton hasPlan={!!plan} />
         {plan && (
           <CopyText

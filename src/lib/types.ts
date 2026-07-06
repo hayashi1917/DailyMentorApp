@@ -158,6 +158,22 @@ export type UserMemory = {
   updated_at: string;
 };
 
+// メンターチャットでAIが実行した操作(UIにチップ表示・DBに記録)
+export type MentorAction =
+  | { type: "tasks_created"; titles: string[] }
+  | { type: "task_updated"; title: string }
+  | { type: "plan_updated"; date: string }
+  | { type: "memory_saved"; content: string };
+
+export type MentorMessageRow = {
+  id: string;
+  user_id: string;
+  role: "user" | "assistant";
+  content: string;
+  actions_json: MentorAction[] | null;
+  created_at: string;
+};
+
 export type LifestylePattern = {
   id: string;
   user_id: string;
