@@ -78,7 +78,12 @@ export async function POST() {
           `\n\n計画は空き時間の合計に収まる量にし、大きな空き時間に重めの作業を割り当ててください。`;
       }
     } catch (e) {
-      console.error("calendar context failed (continuing without it):", e);
+      // 403はGoogle CloudでCalendar APIが未有効の場合に多い。計画生成は続行する
+      console.error(
+        "calendar context failed (continuing without it). " +
+          "If this is a 403, enable the Google Calendar API in Google Cloud Console:",
+        e
+      );
     }
   }
 
@@ -108,6 +113,7 @@ ${calendarSection ? `${calendarSection}\n\n` : ""}${recoverySection}
   "standard_plan": [同上],
   "stretch_plan": [同上],
   "if_then_plans": [{ "if": "もし〜なら", "then": "〜する" }],
+  "schedule": [{ "start": "09:00", "end": "10:00", "title": "..." }],
   "mentor_message": "短いメンターからの一言"
 }
 
@@ -115,7 +121,10 @@ ${calendarSection ? `${calendarSection}\n\n` : ""}${recoverySection}
 - minimum_plan は必ず1件以上。合計30分以内を目安に、かなり小さくする
 - standard_plan は現実的な量にする(未完了タスクを全部入れない)
 - stretch_plan は余力がある場合だけの内容にする
-- task_id は上記の未完了タスクのUUIDのみ使用可。新規提案タスクでは省略する
+- 計画は必ず上記の「未完了タスク」の中から選んで組む。ユーザーが登録していないタスクを発明しない(休憩・食事などの生活ブロックは schedule のみに置く)
+- task_id は、上記の未完了タスクの [id:...] に書かれたUUIDを一字一句そのままコピーした場合のみ含める。それ以外では task_id キー自体を出力しない
+- schedule は今日1日の実行計画を時系列で並べる。タスクだけでなく、食事・移動・休憩などの生活ブロックも含める。カレンダーの予定・空き時間と矛盾させない。現在時刻より前の時間帯は入れない
+- schedule の時刻は "HH:MM" 形式(例 "09:00")
 - すべて日本語で書く`;
 
   let parsed;
@@ -167,6 +176,7 @@ ${calendarSection ? `${calendarSection}\n\n` : ""}${recoverySection}
     standard_plan_json: sanitize(plan.standard_plan),
     stretch_plan_json: sanitize(plan.stretch_plan),
     if_then_plan_json: plan.if_then_plans,
+    schedule_json: plan.schedule,
     mentor_message: plan.mentor_message,
     is_recovery_mode: recovery.isRecoveryMode,
   };

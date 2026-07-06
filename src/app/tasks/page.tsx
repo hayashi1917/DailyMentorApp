@@ -3,16 +3,22 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import type { Task } from "@/lib/types";
+import type { Task, TimeEntry } from "@/lib/types";
 import { DIFFICULTY_LABELS, PRIORITY_LABELS } from "@/lib/labels";
+import { getTodayDate } from "@/lib/date";
 import AppShell from "@/components/AppShell";
+import TimerBar from "@/components/TimerBar";
 
 function TaskCard({
   task,
   onToggle,
+  isTiming,
+  onTimer,
 }: {
   task: Task;
   onToggle: (task: Task) => void;
+  isTiming: boolean;
+  onTimer: (task: Task) => void;
 }) {
   const done = task.status === "done";
   const deadline = task.deadline ? task.deadline.slice(0, 10) : null;
@@ -71,6 +77,19 @@ function TaskCard({
             </p>
           )}
         </Link>
+        {!done && (
+          <button
+            onClick={() => onTimer(task)}
+            aria-label={isTiming ? "計測を停止" : "計測を開始"}
+            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs ${
+              isTiming
+                ? "bg-brand-600 text-white"
+                : "border border-gray-200 text-gray-400"
+            }`}
+          >
+            {isTiming ? "⏹" : "▶"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -80,22 +99,74 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDone, setShowDone] = useState(false);
+  const [runningEntry, setRunningEntry] = useState<TimeEntry | null>(null);
 
   const load = useCallback(async () => {
     const supabase = createClient();
-    const { data } = await supabase
-      .from("tasks")
-      .select("*")
-      .neq("status", "archived")
-      .order("deadline", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true });
+    const [{ data }, { data: running }] = await Promise.all([
+      supabase
+        .from("tasks")
+        .select("*")
+        .neq("status", "archived")
+        .order("deadline", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("time_entries")
+        .select("*")
+        .is("ended_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ]);
     setTasks((data ?? []) as Task[]);
+    setRunningEntry((running as TimeEntry | null) ?? null);
     setLoading(false);
   }, []);
 
   useEffect(() => {
     load();
+    const onChanged = () => load();
+    window.addEventListener("time-entry-changed", onChanged);
+    return () => window.removeEventListener("time-entry-changed", onChanged);
   }, [load]);
+
+  async function stopEntry(entry: TimeEntry) {
+    const supabase = createClient();
+    await supabase
+      .from("time_entries")
+      .update({ ended_at: new Date().toISOString() })
+      .eq("id", entry.id);
+  }
+
+  async function toggleTimer(task: Task) {
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    if (runningEntry?.task_id === task.id) {
+      // このタスクを計測中 → 停止
+      await stopEntry(runningEntry);
+      setRunningEntry(null);
+    } else {
+      // 他の計測があれば止めてから開始(同時計測は1件まで)
+      if (runningEntry) await stopEntry(runningEntry);
+      const { data } = await supabase
+        .from("time_entries")
+        .insert({
+          user_id: user.id,
+          task_id: task.id,
+          label: task.title,
+          date: getTodayDate(),
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      setRunningEntry((data as TimeEntry | null) ?? null);
+    }
+    window.dispatchEvent(new Event("time-entry-changed"));
+  }
 
   async function toggle(task: Task) {
     const supabase = createClient();
@@ -107,6 +178,13 @@ export default function TasksPage() {
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         };
+
+    // 完了にしたタスクを計測中なら、計測も止める
+    if (!done && runningEntry?.task_id === task.id) {
+      await stopEntry(runningEntry);
+      setRunningEntry(null);
+      window.dispatchEvent(new Event("time-entry-changed"));
+    }
 
     // optimistic update
     setTasks((prev) =>
@@ -123,6 +201,16 @@ export default function TasksPage() {
 
   return (
     <AppShell title="タスク">
+      <div className="space-y-3">
+        <TimerBar />
+        <Link
+          href="/tasks/import"
+          className="block rounded-xl border border-dashed border-gray-300 bg-white px-4 py-2.5 text-center text-xs text-gray-500 active:bg-gray-50"
+        >
+          📄 メモ・文書からまとめて取り込む →
+        </Link>
+      </div>
+
       {loading ? (
         <p className="mt-8 text-center text-sm text-gray-400">読み込み中...</p>
       ) : (
@@ -135,9 +223,15 @@ export default function TasksPage() {
               </p>
             </div>
           ) : (
-            <div className="mt-2 space-y-2">
+            <div className="mt-4 space-y-2">
               {todoTasks.map((t) => (
-                <TaskCard key={t.id} task={t} onToggle={toggle} />
+                <TaskCard
+                  key={t.id}
+                  task={t}
+                  onToggle={toggle}
+                  isTiming={runningEntry?.task_id === t.id}
+                  onTimer={toggleTimer}
+                />
               ))}
             </div>
           )}
@@ -153,7 +247,13 @@ export default function TasksPage() {
               {showDone && (
                 <div className="mt-2 space-y-2">
                   {doneTasks.map((t) => (
-                    <TaskCard key={t.id} task={t} onToggle={toggle} />
+                    <TaskCard
+                      key={t.id}
+                      task={t}
+                      onToggle={toggle}
+                      isTiming={false}
+                      onTimer={toggleTimer}
+                    />
                   ))}
                 </div>
               )}

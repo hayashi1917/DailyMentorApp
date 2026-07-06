@@ -3,16 +3,26 @@ import { z } from "zod";
 // ------------------------------------------------------------
 // AI daily plan output (validated before saving to DB)
 // ------------------------------------------------------------
+// LLM出力は揺れるため、title以外は不正値でも計画全体を落とさず
+// フィールド単位で捨てる(.catch(undefined))。
+// task_id の実在チェックはAPI側で validTaskIds と照合して行う。
 export const planItemSchema = z.object({
-  task_id: z.string().uuid().optional(),
+  task_id: z.string().uuid().optional().catch(undefined),
   title: z.string().min(1),
-  estimated_minutes: z.number().int().positive().optional(),
-  reason: z.string().optional(),
+  estimated_minutes: z.number().int().positive().optional().catch(undefined),
+  reason: z.string().optional().catch(undefined),
 });
 
 export const ifThenPlanSchema = z.object({
   if: z.string().min(1),
   then: z.string().min(1),
+});
+
+// 時刻つきスケジュール(生活ブロック含む)。不正でも計画全体は落とさない
+export const scheduleItemSchema = z.object({
+  start: z.string().regex(/^\d{1,2}:\d{2}$/),
+  end: z.string().regex(/^\d{1,2}:\d{2}$/),
+  title: z.string().min(1),
 });
 
 export const dailyPlanSchema = z.object({
@@ -21,6 +31,7 @@ export const dailyPlanSchema = z.object({
   standard_plan: z.array(planItemSchema),
   stretch_plan: z.array(planItemSchema),
   if_then_plans: z.array(ifThenPlanSchema),
+  schedule: z.array(scheduleItemSchema).catch([]).default([]),
   mentor_message: z.string().min(1),
 });
 
@@ -67,6 +78,28 @@ export const skillUpdateSchema = z.object({
 });
 
 export type SkillUpdateOutput = z.infer<typeof skillUpdateSchema>;
+
+// ------------------------------------------------------------
+// Document -> tasks parsing (proposal only; user approves before save)
+// ------------------------------------------------------------
+export const parsedTaskSchema = z.object({
+  title: z.string().min(1).max(200),
+  estimated_minutes: z.number().int().positive().max(600).optional().catch(undefined),
+  priority: z.enum(["high", "medium", "low"]).catch("medium"),
+  difficulty: z.enum(["high", "medium", "low"]).catch("medium"),
+  deadline: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .catch(undefined),
+  description: z.string().max(500).optional().catch(undefined),
+});
+
+export const parseTasksOutputSchema = z.object({
+  tasks: z.array(parsedTaskSchema).min(1).max(20),
+});
+
+export type ParsedTask = z.infer<typeof parsedTaskSchema>;
 
 // ------------------------------------------------------------
 // API inputs
