@@ -1,0 +1,143 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
+import { getOpenAI, OPENAI_MODEL } from "@/lib/openai";
+import { dailyPlanSchema } from "@/lib/schemas";
+import { getTodayDate } from "@/lib/date";
+import { judgeRecoveryMode } from "@/lib/recovery";
+import {
+  formatContextForPrompt,
+  gatherMentorContext,
+  MENTOR_PERSONA,
+} from "@/lib/mentor-context";
+
+export async function POST() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const today = getTodayDate(profile?.timezone ?? undefined);
+
+  const [ctx, recovery] = await Promise.all([
+    gatherMentorContext(supabase, user.id, today),
+    judgeRecoveryMode(supabase, user.id, today),
+  ]);
+
+  const recoverySection = recovery.isRecoveryMode
+    ? `## Recovery Mode 判定: ON\n理由: ${recovery.reasons.join(" / ")}\n` +
+      `Recovery Modeの計画ルール:\n` +
+      `- minimum_plan は1〜2個まで、1つあたり5〜15分程度\n` +
+      `- recovery_action が設定されているタスクはそれを優先する\n` +
+      `- standard_plan / stretch_plan はごく控えめにする(空でもよい)\n` +
+      `- mentor_message は短く、安心感のある文面にする\n` +
+      `- 「今日は取り返す日ではなく、復帰する日」という趣旨を必ず含める`
+    : `## Recovery Mode 判定: OFF`;
+
+  const validTaskIds = new Set(ctx.todoTasks.map((t) => t.id));
+
+  const userPrompt = `今日は ${today} です。以下のコンテキストをもとに、今日の計画をJSONで出力してください。
+
+${formatContextForPrompt(ctx)}
+
+${recoverySection}
+
+## 出力形式
+次のJSONスキーマに厳密に従ってください。他のテキストは一切出力しないでください。
+{
+  "policy": "今日の方針を1〜2文で",
+  "minimum_plan": [{ "task_id": "既存タスクのUUID(該当があれば)", "title": "...", "estimated_minutes": 10, "reason": "..." }],
+  "standard_plan": [同上],
+  "stretch_plan": [同上],
+  "if_then_plans": [{ "if": "もし〜なら", "then": "〜する" }],
+  "mentor_message": "短いメンターからの一言"
+}
+
+制約:
+- minimum_plan は必ず1件以上。合計30分以内を目安に、かなり小さくする
+- standard_plan は現実的な量にする(未完了タスクを全部入れない)
+- stretch_plan は余力がある場合だけの内容にする
+- task_id は上記の未完了タスクのUUIDのみ使用可。新規提案タスクでは省略する
+- すべて日本語で書く`;
+
+  let parsed;
+  try {
+    const openai = getOpenAI();
+    const completion = await openai.chat.completions.create({
+      model: OPENAI_MODEL,
+      messages: [
+        { role: "system", content: MENTOR_PERSONA },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "";
+    parsed = dailyPlanSchema.safeParse(JSON.parse(raw));
+  } catch (e) {
+    console.error("daily-plan generate failed:", e);
+    return NextResponse.json(
+      { error: "AIによる計画生成に失敗しました。もう一度お試しください。" },
+      { status: 502 }
+    );
+  }
+
+  if (!parsed.success) {
+    console.error("daily-plan schema validation failed:", parsed.error);
+    return NextResponse.json(
+      { error: "AI出力の検証に失敗しました。もう一度お試しください。" },
+      { status: 502 }
+    );
+  }
+
+  const plan = parsed.data;
+
+  // Strip任意のtask_idがユーザーの実タスクを指していない場合は除去する
+  const sanitize = (items: typeof plan.minimum_plan) =>
+    items.map((item) =>
+      item.task_id && !validTaskIds.has(item.task_id)
+        ? { ...item, task_id: undefined }
+        : item
+    );
+
+  const row = {
+    user_id: user.id,
+    date: today,
+    policy: plan.policy,
+    minimum_plan_json: sanitize(plan.minimum_plan),
+    standard_plan_json: sanitize(plan.standard_plan),
+    stretch_plan_json: sanitize(plan.stretch_plan),
+    if_then_plan_json: plan.if_then_plans,
+    mentor_message: plan.mentor_message,
+    is_recovery_mode: recovery.isRecoveryMode,
+  };
+
+  const { data: saved, error } = await supabase
+    .from("daily_plans")
+    .upsert(row, { onConflict: "user_id,date" })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("daily-plan save failed:", error);
+    return NextResponse.json(
+      { error: "計画の保存に失敗しました" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    plan: saved,
+    recovery: { isRecoveryMode: recovery.isRecoveryMode, reasons: recovery.reasons },
+  });
+}
