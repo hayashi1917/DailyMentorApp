@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { feedbackInputSchema } from "@/lib/schemas";
+import { embedMemoryRow } from "@/lib/embeddings";
 
 // Feedback types that suggest a durable user preference worth remembering.
 const MEMORY_CANDIDATES: Record<
@@ -119,13 +120,20 @@ export async function POST(request: Request) {
         );
 
       if ((count ?? 0) >= 2) {
-        await supabase.from("user_memories").insert({
-          user_id: user.id,
-          memory_type: candidate.memory_type,
-          content: candidate.content,
-          confidence: 0.5,
-          evidence_count: count ?? 2,
-        });
+        const { data: inserted } = await supabase
+          .from("user_memories")
+          .insert({
+            user_id: user.id,
+            memory_type: candidate.memory_type,
+            content: candidate.content,
+            confidence: 0.5,
+            evidence_count: count ?? 2,
+          })
+          .select("id")
+          .single();
+        if (inserted) {
+          await embedMemoryRow(supabase, inserted.id, candidate.content);
+        }
         memoryUpdated = true;
       }
     }

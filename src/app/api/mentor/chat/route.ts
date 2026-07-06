@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getOpenAI, OPENAI_MODEL } from "@/lib/openai";
 import { mentorChatInputSchema } from "@/lib/schemas";
 import { getTodayDate } from "@/lib/date";
+import { searchRelevantMemories } from "@/lib/embeddings";
 import type { DailyPlanRow } from "@/lib/types";
 import {
   formatContextForPrompt,
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
 
   const today = getTodayDate();
 
-  const [ctx, planRes] = await Promise.all([
+  const [ctx, planRes, relevantMemories] = await Promise.all([
     gatherMentorContext(supabase, user.id, today),
     supabase
       .from("daily_plans")
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
       .eq("user_id", user.id)
       .eq("date", today)
       .maybeSingle(),
+    // pgvectorで発言内容に関連する長期記憶を検索(未設定時は空配列)
+    searchRelevantMemories(supabase, parsed.data.message, 5),
   ]);
 
   const plan = planRes.data as DailyPlanRow | null;
@@ -62,7 +65,13 @@ export async function POST(request: Request) {
 
 ${planSection}
 
-${formatContextForPrompt(ctx)}`;
+${
+  relevantMemories.length
+    ? `## 今の話題に特に関連する記憶(ベクトル検索)\n${relevantMemories
+        .map((m) => `- [${m.memory_type}] ${m.content}`)
+        .join("\n")}\n\n`
+    : ""
+}${formatContextForPrompt(ctx)}`;
 
   try {
     const openai = getOpenAI();

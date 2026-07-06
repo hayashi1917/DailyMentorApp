@@ -14,6 +14,7 @@ export type Task = {
   status: TaskStatus;
   next_action: string | null;
   recovery_action: string | null;
+  parent_task_id: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
