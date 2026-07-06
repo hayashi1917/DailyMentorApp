@@ -127,6 +127,28 @@ export const feedbackInputSchema = z.object({
     "other",
   ]),
   feedback_text: z.string().max(1000).nullish(),
+  // 自由記述フィードバック(trueなら保存時にAIが記憶を抽出する)
+  is_free_text: z.boolean().optional().default(false),
+});
+
+// 自由記述フィードバックからの記憶抽出(AI出力の検証用)
+export const feedbackAnalysisSchema = z.object({
+  memories: z
+    .array(
+      z.object({
+        memory_type: z.enum([
+          "rhythm",
+          "preference",
+          "failure_pattern",
+          "success_pattern",
+          "task_style",
+          "mentor_tone",
+          "recovery_strategy",
+        ]),
+        content: z.string().min(1).max(200),
+      })
+    )
+    .max(2),
 });
 
 export const mentorChatInputSchema = z.object({
