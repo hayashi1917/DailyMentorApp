@@ -83,7 +83,8 @@ ${
         { role: "user", content: parsed.data.message },
       ],
       temperature: 0.7,
-      max_tokens: 500,
+      // 新世代モデルは max_tokens 非対応のため max_completion_tokens を使う
+      max_completion_tokens: 500,
     });
 
     const reply = completion.choices[0]?.message?.content ?? "";

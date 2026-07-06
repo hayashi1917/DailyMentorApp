@@ -1,5 +1,5 @@
 /* Daily Mentor Agent service worker: offline fallback + push notifications */
-const CACHE_NAME = "dma-v1";
+const CACHE_NAME = "dma-v2";
 const OFFLINE_URL = "/offline";
 const PRECACHE_URLS = [OFFLINE_URL, "/icon.svg", "/manifest.webmanifest"];
 

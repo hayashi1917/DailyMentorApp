@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getOpenAI } from "@/lib/openai";
 
-export const EMBEDDING_MODEL = "text-embedding-3-small"; // 1536 dims
+// 1536次元のモデルを使うこと(DBの vector(1536) と一致させる必要がある)
+export const EMBEDDING_MODEL =
+  process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small";
 
 export async function embedText(text: string): Promise<number[]> {
   const openai = getOpenAI();
