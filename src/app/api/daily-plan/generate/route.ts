@@ -78,7 +78,12 @@ export async function POST() {
           `\n\n計画は空き時間の合計に収まる量にし、大きな空き時間に重めの作業を割り当ててください。`;
       }
     } catch (e) {
-      console.error("calendar context failed (continuing without it):", e);
+      // 403はGoogle CloudでCalendar APIが未有効の場合に多い。計画生成は続行する
+      console.error(
+        "calendar context failed (continuing without it). " +
+          "If this is a 403, enable the Google Calendar API in Google Cloud Console:",
+        e
+      );
     }
   }
 
@@ -115,7 +120,7 @@ ${calendarSection ? `${calendarSection}\n\n` : ""}${recoverySection}
 - minimum_plan は必ず1件以上。合計30分以内を目安に、かなり小さくする
 - standard_plan は現実的な量にする(未完了タスクを全部入れない)
 - stretch_plan は余力がある場合だけの内容にする
-- task_id は上記の未完了タスクのUUIDのみ使用可。新規提案タスクでは省略する
+- task_id は、上記の未完了タスクの [id:...] に書かれたUUIDを一字一句そのままコピーした場合のみ含める。それ以外(新規提案・自作のIDなど)では task_id キー自体を出力しない
 - すべて日本語で書く`;
 
   let parsed;

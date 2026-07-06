@@ -3,11 +3,14 @@ import { z } from "zod";
 // ------------------------------------------------------------
 // AI daily plan output (validated before saving to DB)
 // ------------------------------------------------------------
+// LLM出力は揺れるため、title以外は不正値でも計画全体を落とさず
+// フィールド単位で捨てる(.catch(undefined))。
+// task_id の実在チェックはAPI側で validTaskIds と照合して行う。
 export const planItemSchema = z.object({
-  task_id: z.string().uuid().optional(),
+  task_id: z.string().uuid().optional().catch(undefined),
   title: z.string().min(1),
-  estimated_minutes: z.number().int().positive().optional(),
-  reason: z.string().optional(),
+  estimated_minutes: z.number().int().positive().optional().catch(undefined),
+  reason: z.string().optional().catch(undefined),
 });
 
 export const ifThenPlanSchema = z.object({
