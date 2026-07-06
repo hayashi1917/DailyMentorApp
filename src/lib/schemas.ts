@@ -18,12 +18,20 @@ export const ifThenPlanSchema = z.object({
   then: z.string().min(1),
 });
 
+// 時刻つきスケジュール(生活ブロック含む)。不正でも計画全体は落とさない
+export const scheduleItemSchema = z.object({
+  start: z.string().regex(/^\d{1,2}:\d{2}$/),
+  end: z.string().regex(/^\d{1,2}:\d{2}$/),
+  title: z.string().min(1),
+});
+
 export const dailyPlanSchema = z.object({
   policy: z.string().min(1),
   minimum_plan: z.array(planItemSchema).min(1),
   standard_plan: z.array(planItemSchema),
   stretch_plan: z.array(planItemSchema),
   if_then_plans: z.array(ifThenPlanSchema),
+  schedule: z.array(scheduleItemSchema).catch([]).default([]),
   mentor_message: z.string().min(1),
 });
 
@@ -70,6 +78,28 @@ export const skillUpdateSchema = z.object({
 });
 
 export type SkillUpdateOutput = z.infer<typeof skillUpdateSchema>;
+
+// ------------------------------------------------------------
+// Document -> tasks parsing (proposal only; user approves before save)
+// ------------------------------------------------------------
+export const parsedTaskSchema = z.object({
+  title: z.string().min(1).max(200),
+  estimated_minutes: z.number().int().positive().max(600).optional().catch(undefined),
+  priority: z.enum(["high", "medium", "low"]).catch("medium"),
+  difficulty: z.enum(["high", "medium", "low"]).catch("medium"),
+  deadline: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .catch(undefined),
+  description: z.string().max(500).optional().catch(undefined),
+});
+
+export const parseTasksOutputSchema = z.object({
+  tasks: z.array(parsedTaskSchema).min(1).max(20),
+});
+
+export type ParsedTask = z.infer<typeof parsedTaskSchema>;
 
 // ------------------------------------------------------------
 // API inputs

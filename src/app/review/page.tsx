@@ -8,8 +8,15 @@ import {
   FAILURE_REASON_LABELS,
   MINIMUM_COMPLETED_LABELS,
 } from "@/lib/labels";
-import type { MinimumCompleted } from "@/lib/types";
+import type {
+  DailyPlanRow,
+  MinimumCompleted,
+  Task,
+  TimeEntry,
+} from "@/lib/types";
+import { buildReviewText } from "@/lib/export";
 import AppShell from "@/components/AppShell";
+import CopyText from "@/components/CopyText";
 
 const SCORE_LABELS: Record<number, string> = {
   0: "0: 動けなかった",
@@ -31,15 +38,28 @@ export default function ReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [plan, setPlan] = useState<DailyPlanRow | null>(null);
+  const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
 
   useEffect(() => {
     (async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("daily_reviews")
-        .select("*")
-        .eq("date", today)
-        .maybeSingle();
+      const [reviewRes, planRes, entriesRes, tasksRes] = await Promise.all([
+        supabase
+          .from("daily_reviews")
+          .select("*")
+          .eq("date", today)
+          .maybeSingle(),
+        supabase.from("daily_plans").select("*").eq("date", today).maybeSingle(),
+        supabase
+          .from("time_entries")
+          .select("*")
+          .eq("date", today)
+          .order("started_at", { ascending: true }),
+        supabase.from("tasks").select("*").neq("status", "archived"),
+      ]);
+      const data = reviewRes.data;
       if (data) {
         setExistingId(data.id);
         setMinimumCompleted(data.minimum_completed);
@@ -47,9 +67,25 @@ export default function ReviewPage() {
         setReasons(data.failure_reasons ?? []);
         setReflection(data.reflection_text ?? "");
       }
+      setPlan((planRes.data as DailyPlanRow | null) ?? null);
+      setEntries((entriesRes.data ?? []) as TimeEntry[]);
+      setTasks((tasksRes.data ?? []) as Task[]);
       setLoading(false);
     })();
   }, [today]);
+
+  const reviewText = buildReviewText({
+    date: today,
+    plan,
+    tasksById: new Map(tasks.map((t) => [t.id, t])),
+    entries,
+    review: {
+      minimum_completed: minimumCompleted,
+      completion_score: score,
+      failure_reasons: reasons,
+      reflection_text: reflection,
+    },
+  });
 
   function toggleReason(r: string) {
     setReasons((prev) =>
@@ -127,6 +163,9 @@ export default function ReviewPage() {
           >
             今日の画面へ戻る
           </button>
+        </div>
+        <div className="mt-4">
+          <CopyText text={reviewText} label="📋 振り返りをコピー" />
         </div>
       </AppShell>
     );
@@ -240,6 +279,13 @@ export default function ReviewPage() {
           {saving ? "保存中..." : existingId ? "更新する" : "今日を記録する"}
         </button>
       </form>
+
+      <div className="mt-4">
+        <CopyText text={reviewText} label="📋 振り返りをコピー" />
+        <p className="mt-1.5 text-[10px] text-gray-400">
+          タスクの計測ログ(▶ボタン)と入力中の内容から生成されます
+        </p>
+      </div>
     </AppShell>
   );
 }

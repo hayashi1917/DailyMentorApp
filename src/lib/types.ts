@@ -53,6 +53,12 @@ export type IfThenPlan = {
   then: string;
 };
 
+export type ScheduleItem = {
+  start: string; // "09:00"
+  end: string; // "10:00"
+  title: string;
+};
+
 export type DailyPlanRow = {
   id: string;
   user_id: string;
@@ -62,8 +68,20 @@ export type DailyPlanRow = {
   standard_plan_json: PlanItem[] | null;
   stretch_plan_json: PlanItem[] | null;
   if_then_plan_json: IfThenPlan[] | null;
+  schedule_json: ScheduleItem[] | null;
   mentor_message: string | null;
   is_recovery_mode: boolean;
+  created_at: string;
+};
+
+export type TimeEntry = {
+  id: string;
+  user_id: string;
+  task_id: string | null;
+  label: string;
+  date: string;
+  started_at: string;
+  ended_at: string | null;
   created_at: string;
 };
 

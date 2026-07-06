@@ -9,6 +9,9 @@ import AppShell from "@/components/AppShell";
 import GeneratePlanButton from "@/components/GeneratePlanButton";
 import FeedbackButtons from "@/components/FeedbackButtons";
 import FreeSlots from "@/components/FreeSlots";
+import TimerBar from "@/components/TimerBar";
+import CopyText from "@/components/CopyText";
+import { buildMorningText } from "@/lib/export";
 
 export const dynamic = "force-dynamic";
 
@@ -105,8 +108,13 @@ export default async function TodayPage() {
         )}
       </div>
 
+      {/* リアルタイム計測 */}
+      <div className="mt-5">
+        <TimerBar />
+      </div>
+
       {/* チェックイン状態 */}
-      <section className="mt-5">
+      <section className="mt-4">
         {checkin ? (
           <div className="flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
             <p className="text-sm text-gray-700">
@@ -201,6 +209,25 @@ export default async function TodayPage() {
             </div>
           </section>
 
+          {/* 目標スケジュール */}
+          {(plan.schedule_json ?? []).length > 0 && (
+            <section className="mt-5">
+              <h2 className="text-sm font-semibold text-gray-500">
+                🕐 目標スケジュール
+              </h2>
+              <ul className="mt-2 divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white">
+                {(plan.schedule_json ?? []).map((s, i) => (
+                  <li key={i} className="flex items-baseline gap-3 px-4 py-2">
+                    <span className="shrink-0 font-mono text-xs text-gray-500">
+                      {s.start.padStart(5, "0")} - {s.end.padStart(5, "0")}
+                    </span>
+                    <span className="text-sm text-gray-800">{s.title}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {/* If-Then プラン */}
           {(plan.if_then_plan_json ?? []).length > 0 && (
             <section className="mt-5">
@@ -278,6 +305,12 @@ export default async function TodayPage() {
       {/* CTA */}
       <div className="mt-6 space-y-3">
         <GeneratePlanButton hasPlan={!!plan} />
+        {plan && (
+          <CopyText
+            text={buildMorningText(plan)}
+            label="📋 1日の予定(朝)をコピー"
+          />
+        )}
         <Link
           href="/review"
           className="block w-full rounded-2xl border border-gray-300 bg-white py-3.5 text-center text-sm font-medium text-gray-700 active:bg-gray-50"
