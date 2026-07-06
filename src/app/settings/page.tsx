@@ -1,10 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import AppShell from "@/components/AppShell";
+import CalendarConnect from "@/components/CalendarConnect";
+import PushToggle from "@/components/PushToggle";
+import InstallPrompt from "@/components/InstallPrompt";
+
+function CalendarCallbackNotice() {
+  const searchParams = useSearchParams();
+  const status = searchParams.get("calendar");
+  if (status === "connected") {
+    return (
+      <p className="rounded-xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
+        ✅ Googleカレンダーを連携しました
+      </p>
+    );
+  }
+  if (status === "error") {
+    return (
+      <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
+        カレンダー連携に失敗しました。もう一度お試しください。
+      </p>
+    );
+  }
+  return null;
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -36,6 +59,8 @@ export default function SettingsPage() {
       const [patternsRes, skillsRes] = await Promise.all([
         fetch("/api/learning/update-patterns", { method: "POST" }),
         fetch("/api/learning/update-skills", { method: "POST" }),
+        // 未埋め込みの記憶にembeddingを付与(ベクトル検索用)
+        fetch("/api/learning/embed-memories", { method: "POST" }),
       ]);
       const skillsJson = await skillsRes.json();
       if (patternsRes.ok && skillsRes.ok) {
@@ -58,6 +83,12 @@ export default function SettingsPage() {
   return (
     <AppShell title="⚙️ 設定">
       <div className="mt-2 space-y-6">
+        <Suspense fallback={null}>
+          <CalendarCallbackNotice />
+        </Suspense>
+
+        <InstallPrompt />
+
         <section className="rounded-2xl border border-gray-200 bg-white">
           <div className="border-b border-gray-100 px-4 py-3">
             <p className="text-xs text-gray-400">アカウント</p>
@@ -70,6 +101,22 @@ export default function SettingsPage() {
             <span>🧠 学習された記憶・Skillを見る</span>
             <span className="text-gray-300">›</span>
           </Link>
+        </section>
+
+        <section className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
+          <p className="text-sm font-semibold text-gray-800">
+            📅 Googleカレンダー連携
+          </p>
+          <div className="mt-3">
+            <CalendarConnect />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-gray-200 bg-white px-4 py-4">
+          <p className="text-sm font-semibold text-gray-800">🔔 プッシュ通知</p>
+          <div className="mt-3">
+            <PushToggle />
+          </div>
         </section>
 
         <section className="rounded-2xl border border-gray-200 bg-white px-4 py-4">

@@ -43,6 +43,9 @@ function TaskCard({
               done ? "text-gray-400 line-through" : "text-gray-900"
             }`}
           >
+            {task.parent_task_id && (
+              <span className="mr-1 text-gray-300">└</span>
+            )}
             {task.title}
           </p>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-500">

@@ -8,6 +8,7 @@ import type { DailyCheckin, DailyPlanRow, PlanItem } from "@/lib/types";
 import AppShell from "@/components/AppShell";
 import GeneratePlanButton from "@/components/GeneratePlanButton";
 import FeedbackButtons from "@/components/FeedbackButtons";
+import FreeSlots from "@/components/FreeSlots";
 
 export const dynamic = "force-dynamic";
 
@@ -218,6 +219,14 @@ export default async function TodayPage() {
               </ul>
             </section>
           )}
+
+          {/* カレンダーの空き時間 + 作業ブロック登録(連携時のみ表示) */}
+          <FreeSlots
+            planItems={[
+              ...(plan.minimum_plan_json ?? []),
+              ...(plan.standard_plan_json ?? []),
+            ]}
+          />
 
           {/* 計画へのフィードバック */}
           <section className="mt-6 rounded-2xl bg-gray-50 p-4">

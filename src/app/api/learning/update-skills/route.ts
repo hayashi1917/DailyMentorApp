@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getOpenAI, OPENAI_MODEL } from "@/lib/openai";
 import { isRuleTextSafe, skillUpdateSchema } from "@/lib/schemas";
+import { embedMemoryRow } from "@/lib/embeddings";
 import { addDays, getTodayDate } from "@/lib/date";
 import type { AgentSkill, FeedbackEvent, UserMemory } from "@/lib/types";
 
@@ -203,13 +204,20 @@ ${memories.length ? memories.map((m) => `- [${m.memory_type}] ${m.content} (ç¢ºå
         })
         .eq("id", existing.id);
     } else {
-      await supabase.from("user_memories").insert({
-        user_id: user.id,
-        memory_type: mem.memory_type,
-        content: mem.content,
-        confidence: 0.5,
-        evidence_count: 1,
-      });
+      const { data: inserted } = await supabase
+        .from("user_memories")
+        .insert({
+          user_id: user.id,
+          memory_type: mem.memory_type,
+          content: mem.content,
+          confidence: 0.5,
+          evidence_count: 1,
+        })
+        .select("id")
+        .single();
+      if (inserted) {
+        await embedMemoryRow(supabase, inserted.id, mem.content);
+      }
     }
   }
 

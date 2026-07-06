@@ -5,6 +5,12 @@ import { dailyPlanSchema } from "@/lib/schemas";
 import { getTodayDate } from "@/lib/date";
 import { judgeRecoveryMode } from "@/lib/recovery";
 import {
+  computeFreeSlots,
+  getAccessToken,
+  isGoogleConfigured,
+  listEvents,
+} from "@/lib/google";
+import {
   formatContextForPrompt,
   gatherMentorContext,
   MENTOR_PERSONA,
@@ -33,6 +39,49 @@ export async function POST() {
     judgeRecoveryMode(supabase, user.id, today),
   ]);
 
+  // Googleカレンダー連携済みなら、今日の予定と空き時間を計画に反映する
+  let calendarSection = "";
+  if (isGoogleConfigured()) {
+    try {
+      const accessToken = await getAccessToken(supabase, user.id);
+      if (accessToken) {
+        const events = await listEvents(
+          accessToken,
+          `${today}T00:00:00+09:00`,
+          `${today}T23:59:59+09:00`
+        );
+        const slots = computeFreeSlots(events, today);
+        const fmt = (iso: string) =>
+          new Intl.DateTimeFormat("ja-JP", {
+            timeZone: "Asia/Tokyo",
+            hour: "2-digit",
+            minute: "2-digit",
+          }).format(new Date(iso));
+        calendarSection =
+          `## 今日のカレンダー\n` +
+          `予定:\n` +
+          (events.length
+            ? events
+                .map((e) =>
+                  e.allDay
+                    ? `- (終日) ${e.summary}`
+                    : `- ${fmt(e.start)}〜${fmt(e.end)} ${e.summary}`
+                )
+                .join("\n")
+            : "- なし") +
+          `\n\nこれからの空き時間:\n` +
+          (slots.length
+            ? slots
+                .map((s) => `- ${fmt(s.start)}〜${fmt(s.end)} (${s.minutes}分)`)
+                .join("\n")
+            : "- ほとんどなし") +
+          `\n\n計画は空き時間の合計に収まる量にし、大きな空き時間に重めの作業を割り当ててください。`;
+      }
+    } catch (e) {
+      console.error("calendar context failed (continuing without it):", e);
+    }
+  }
+
   const recoverySection = recovery.isRecoveryMode
     ? `## Recovery Mode 判定: ON\n理由: ${recovery.reasons.join(" / ")}\n` +
       `Recovery Modeの計画ルール:\n` +
@@ -49,7 +98,7 @@ export async function POST() {
 
 ${formatContextForPrompt(ctx)}
 
-${recoverySection}
+${calendarSection ? `${calendarSection}\n\n` : ""}${recoverySection}
 
 ## 出力形式
 次のJSONスキーマに厳密に従ってください。他のテキストは一切出力しないでください。
